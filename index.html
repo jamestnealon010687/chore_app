@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Chore Champions" />
+  <meta name="theme-color" content="#F0F4FF" />
+  <title>Chore Champions ✨</title>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@600;700;800;900&display=swap" rel="stylesheet" />
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+  <style>
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body { margin: 0; overscroll-behavior: none; font-family: 'Nunito', sans-serif; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.85; } }
+    input:focus, button:focus { outline: none; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect, useCallback, useRef } = React;
+
+    /* ─── Storage via localStorage ─── */
+    const Storage = {
+      get(key) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : null; } catch { return null; } },
+      set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch {} },
+    };
+
+    /* ─── Constants ─── */
+    const DEFAULT_CHORES = [
+      { id: "c1", name: "Brush Teeth", icon: "🪥" },
+      { id: "c2", name: "Make Bed", icon: "🛏️" },
+      { id: "c3", name: "Pick Up Toys", icon: "🧸" },
+      { id: "c4", name: "Get Dressed", icon: "👕" },
+      { id: "c5", name: "Wash Hands", icon: "🧼" },
+    ];
+
+    const AVAILABLE_ICONS = [
+      "🪥","🛏️","🧸","👕","🧼","🍽️","👟","📚","🧹","🐕",
+      "🐱","🌱","🎨","🎵","🚿","🥤","🍎","🥦","💤","🧤",
+      "🎒","✏️","🧃","🥣","🪣","🧺","💊","🪴","🚲","⭐"
+    ];
+
+    const KID_COLORS = [
+      { bg: "#E8F4FD", border: "#B8DDF0", accent: "#4A9CC9", light: "#F0F8FF", header: "#3A8AB9" },
+      { bg: "#FDE8F0", border: "#F0B8D0", accent: "#C94A7C", light: "#FFF0F5", header: "#B93A6C" },
+      { bg: "#E8FDE8", border: "#B8F0B8", accent: "#4AC94A", light: "#F0FFF0", header: "#3AB93A" },
+    ];
+
+    const CELEBRATION_TYPES = ["confetti", "stars", "hearts", "sparkles", "fireworks", "emoji_rain"];
+
+    function genId() { return Math.random().toString(36).substr(2, 9); }
+
+    function getDefaultState() {
+      return {
+        passcode: "1234",
+        kids: [
+          { id: "k1", name: "Kid 1", active: true, isGuest: false, chores: DEFAULT_CHORES.map(c => ({ ...c, id: genId(), completed: false })) },
+          { id: "k2", name: "Kid 2", active: true, isGuest: false, chores: DEFAULT_CHORES.map(c => ({ ...c, id: genId(), completed: false })) },
+          { id: "k3", name: "Guest", active: false, isGuest: true, chores: DEFAULT_CHORES.map(c => ({ ...c, id: genId(), completed: false })) },
+        ],
+        lastReset: new Date().toDateString(),
+      };
+    }
+
+    /* ═══════════════════════════════════════════
+       Celebration Animations
+       ═══════════════════════════════════════════ */
+    function CelebrationOverlay({ type, onDone }) {
+      const canvasRef = useRef(null);
+
+      useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const ctx = canvas.getContext("2d");
+        const dpr = window.devicePixelRatio || 1;
+        const W = 300, H = 300;
+        canvas.width = W * dpr; canvas.height = H * dpr;
+        canvas.style.width = W + "px"; canvas.style.height = H + "px";
+        ctx.scale(dpr, dpr);
+
+        let particles = [];
+        let frame = 0;
+        const maxFrames = 70;
+        let animId;
+
+        if (type === "confetti") {
+          const colors = ["#FF6B6B","#4ECDC4","#FFE66D","#A78BFA","#F97316","#06B6D4","#EC4899"];
+          for (let i = 0; i < 50; i++) {
+            particles.push({
+              x: W/2+(Math.random()-0.5)*40, y: H/2,
+              vx: (Math.random()-0.5)*12, vy: (Math.random()-0.8)*10-4,
+              w: Math.random()*8+4, h: Math.random()*6+2,
+              color: colors[~~(Math.random()*colors.length)],
+              rot: Math.random()*Math.PI*2, rotV: (Math.random()-0.5)*0.3,
+            });
+          }
+        } else if (type === "stars") {
+          for (let i = 0; i < 20; i++) {
+            const a = (Math.PI*2*i)/20;
+            particles.push({ x:W/2, y:H/2, vx:Math.cos(a)*(2+Math.random()*3), vy:Math.sin(a)*(2+Math.random()*3),
+              size:Math.random()*12+8, color:["#FFD700","#FFA500","#FF6347","#FFE66D"][~~(Math.random()*4)] });
+          }
+        } else if (type === "hearts") {
+          for (let i = 0; i < 15; i++) {
+            particles.push({ x:W/2+(Math.random()-0.5)*100, y:H+20, vy:-(Math.random()*3+2), vx:(Math.random()-0.5)*1.5,
+              size:Math.random()*16+12, wobble:Math.random()*Math.PI*2,
+              color:["#FF6B9D","#C44569","#FF8BA7","#E84393"][~~(Math.random()*4)] });
+          }
+        } else if (type === "sparkles") {
+          for (let i = 0; i < 25; i++) {
+            particles.push({ x:Math.random()*W, y:Math.random()*H, size:Math.random()*6+2, maxSize:Math.random()*10+6,
+              phase:Math.random()*Math.PI*2, speed:Math.random()*0.15+0.08,
+              color:["#FFD700","#FFFFFF","#87CEEB","#DDA0DD","#98FB98"][~~(Math.random()*5)] });
+          }
+        } else if (type === "fireworks") {
+          const colors = ["#FF6B6B","#4ECDC4","#FFE66D","#A78BFA","#F97316"];
+          for (let b = 0; b < 3; b++) {
+            const bx=W*0.25+Math.random()*W*0.5, by=H*0.25+Math.random()*H*0.3, bc=colors[~~(Math.random()*colors.length)];
+            for (let i = 0; i < 15; i++) {
+              const a=(Math.PI*2*i)/15, sp=1.5+Math.random()*2.5;
+              particles.push({ x:bx, y:by, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp, size:Math.random()*4+2, color:bc, delay:b*10 });
+            }
+          }
+        } else if (type === "emoji_rain") {
+          const emojis = ["⭐","🌟","✨","💫","🎉","🎊","🥳","👏","💪","🏆"];
+          for (let i = 0; i < 12; i++) {
+            particles.push({ x:Math.random()*W, y:-20-Math.random()*60, vy:Math.random()*2+1.5, vx:(Math.random()-0.5)*1,
+              emoji:emojis[~~(Math.random()*emojis.length)], size:Math.random()*14+18, rot:(Math.random()-0.5)*0.5 });
+          }
+        }
+
+        function drawStar(cx,cy,sz,col) {
+          ctx.fillStyle=col; ctx.beginPath();
+          for(let i=0;i<5;i++){const a=(i*4*Math.PI)/5-Math.PI/2;ctx[i===0?"moveTo":"lineTo"](cx+Math.cos(a)*sz,cy+Math.sin(a)*sz);}
+          ctx.closePath(); ctx.fill();
+        }
+        function drawHeart(cx,cy,sz,col) {
+          ctx.fillStyle=col; ctx.beginPath(); const s=sz/2;
+          ctx.moveTo(cx,cy+s*0.4);
+          ctx.bezierCurveTo(cx,cy-s*0.2,cx-s,cy-s*0.6,cx-s,cy+s*0.1);
+          ctx.bezierCurveTo(cx-s,cy+s*0.6,cx,cy+s,cx,cy+s*1.1);
+          ctx.bezierCurveTo(cx,cy+s,cx+s,cy+s*0.6,cx+s,cy+s*0.1);
+          ctx.bezierCurveTo(cx+s,cy-s*0.6,cx,cy-s*0.2,cx,cy+s*0.4);
+          ctx.fill();
+        }
+
+        function animate() {
+          ctx.clearRect(0,0,W,H); frame++;
+          const fade = Math.max(0, 1-frame/maxFrames);
+
+          if (type==="confetti") {
+            particles.forEach(p=>{
+              p.x+=p.vx;p.y+=p.vy;p.vy+=0.2;p.rot+=p.rotV;p.vx*=0.99;
+              ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.rot);
+              ctx.fillStyle=p.color;ctx.globalAlpha=fade;
+              ctx.fillRect(-p.w/2,-p.h/2,p.w,p.h);ctx.restore();
+            });
+          } else if (type==="stars") {
+            particles.forEach(p=>{
+              p.x+=p.vx;p.y+=p.vy;p.vx*=0.97;p.vy*=0.97;
+              ctx.globalAlpha=fade; drawStar(p.x,p.y,p.size*(0.5+frame/maxFrames*0.5),p.color);
+            });
+          } else if (type==="hearts") {
+            particles.forEach(p=>{
+              p.y+=p.vy;p.x+=Math.sin(p.wobble+frame*0.05)*0.8;
+              ctx.globalAlpha=Math.max(0,1-frame/(maxFrames*1.2));
+              drawHeart(p.x,p.y,p.size,p.color);
+            });
+          } else if (type==="sparkles") {
+            particles.forEach(p=>{
+              const t=Math.sin(p.phase+frame*p.speed);
+              const cs=p.size+(p.maxSize-p.size)*Math.max(0,t);
+              ctx.globalAlpha=Math.max(0,t)*Math.max(0,1-frame/(maxFrames*1.1));
+              ctx.fillStyle=p.color;ctx.beginPath();
+              ctx.moveTo(p.x,p.y-cs);
+              ctx.quadraticCurveTo(p.x+cs*.15,p.y-cs*.15,p.x+cs,p.y);
+              ctx.quadraticCurveTo(p.x+cs*.15,p.y+cs*.15,p.x,p.y+cs);
+              ctx.quadraticCurveTo(p.x-cs*.15,p.y+cs*.15,p.x-cs,p.y);
+              ctx.quadraticCurveTo(p.x-cs*.15,p.y-cs*.15,p.x,p.y-cs);
+              ctx.fill();
+            });
+          } else if (type==="fireworks") {
+            particles.forEach(p=>{
+              if(frame<(p.delay||0))return;
+              const lf=frame-(p.delay||0);
+              p.x+=p.vx;p.y+=p.vy;p.vy+=0.04;p.vx*=0.98;p.vy*=0.98;
+              ctx.globalAlpha=Math.max(0,1-lf/(maxFrames*0.7));
+              ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,p.size,0,Math.PI*2);ctx.fill();
+              ctx.globalAlpha*=0.3;ctx.beginPath();ctx.arc(p.x-p.vx*2,p.y-p.vy*2,p.size*0.6,0,Math.PI*2);ctx.fill();
+            });
+          } else if (type==="emoji_rain") {
+            ctx.textAlign="center";ctx.textBaseline="middle";
+            particles.forEach(p=>{
+              p.y+=p.vy;p.x+=p.vx;
+              ctx.globalAlpha=Math.min(1,Math.max(0,1-(frame-30)/maxFrames));
+              ctx.font=p.size+"px serif";
+              ctx.save();ctx.translate(p.x,p.y);ctx.rotate(p.rot);ctx.fillText(p.emoji,0,0);ctx.restore();
+            });
+          }
+          ctx.globalAlpha=1;
+          if(frame<maxFrames) animId=requestAnimationFrame(animate); else onDone();
+        }
+        animId=requestAnimationFrame(animate);
+        return ()=>cancelAnimationFrame(animId);
+      }, [type, onDone]);
+
+      return <canvas ref={canvasRef} style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",pointerEvents:"none",zIndex:100}} />;
+    }
+
+    /* ═══════════════════════════════════════════
+       Passcode Input
+       ═══════════════════════════════════════════ */
+    function PasscodeInput({ onSubmit, title = "Enter Passcode" }) {
+      const [digits, setDigits] = useState(["","","",""]);
+      const refs = [useRef(),useRef(),useRef(),useRef()];
+      const [error, setError] = useState(false);
+
+      const handleDigit = (i, val) => {
+        if(!/^\d?$/.test(val))return;
+        const nd=[...digits];nd[i]=val;setDigits(nd);setError(false);
+        if(val&&i<3)refs[i+1].current.focus();
+        if(nd.every(d=>d!=="")){
+          if(onSubmit(nd.join(""))===false){
+            setError(true);setDigits(["","","",""]);
+            setTimeout(()=>refs[0].current?.focus(),100);
+          }
+        }
+      };
+      const handleKey=(i,e)=>{if(e.key==="Backspace"&&!digits[i]&&i>0)refs[i-1].current.focus();};
+
+      return (
+        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:24}}>
+          <h2 style={{fontSize:28,fontWeight:700,color:"#4A5568",margin:0}}>{title}</h2>
+          <div style={{display:"flex",gap:12}}>
+            {digits.map((d,i)=>(
+              <input key={i} ref={refs[i]} type="tel" inputMode="numeric" maxLength={1} value={d}
+                onChange={e=>handleDigit(i,e.target.value)} onKeyDown={e=>handleKey(i,e)}
+                style={{width:64,height:80,border:`3px solid ${error?"#FC8181":d?"#A78BFA":"#E2E8F0"}`,
+                  borderRadius:16,fontSize:36,fontWeight:700,textAlign:"center",
+                  background:error?"#FFF5F5":"#FFF",color:"#4A5568",transition:"all 0.2s",
+                  boxShadow:d?"0 2px 8px rgba(167,139,250,0.2)":"none"}} />
+            ))}
+          </div>
+          {error&&<p style={{color:"#E53E3E",fontWeight:600,margin:0}}>Wrong passcode, try again!</p>}
+        </div>
+      );
+    }
+
+    /* ═══════════════════════════════════════════
+       Chore Item
+       ═══════════════════════════════════════════ */
+    function ChoreItem({ chore, color, onToggle }) {
+      const [celebration, setCelebration] = useState(null);
+      const handleToggle=()=>{
+        if(!chore.completed) setCelebration(CELEBRATION_TYPES[~~(Math.random()*CELEBRATION_TYPES.length)]);
+        onToggle();
+      };
+
+      return (
+        <div onClick={handleToggle} style={{
+          position:"relative",display:"flex",alignItems:"center",gap:12,padding:"14px 16px",borderRadius:16,
+          background:chore.completed?color.accent+"18":"#FFF",
+          border:`2px solid ${chore.completed?color.accent+"40":"#F0F0F0"}`,
+          cursor:"pointer",transition:"all 0.3s cubic-bezier(0.4,0,0.2,1)",
+          transform:chore.completed?"scale(0.98)":"scale(1)",userSelect:"none",overflow:"visible",
+        }}>
+          <div style={{width:40,height:40,minWidth:40,borderRadius:12,
+            border:`3px solid ${chore.completed?color.accent:"#D0D0D0"}`,
+            background:chore.completed?color.accent:"#FFF",
+            display:"flex",alignItems:"center",justifyContent:"center",
+            transition:"all 0.3s",boxShadow:chore.completed?`0 2px 8px ${color.accent}40`:"none",
+          }}>
+            {chore.completed&&<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>}
+          </div>
+          <span style={{fontSize:36,lineHeight:1,filter:chore.completed?"grayscale(0.3)":"none"}}>{chore.icon}</span>
+          <span style={{fontSize:20,fontWeight:700,color:chore.completed?color.accent:"#4A5568",
+            textDecoration:chore.completed?"line-through":"none",opacity:chore.completed?0.7:1,
+            transition:"all 0.3s",flex:1}}>{chore.name}</span>
+          {celebration&&<CelebrationOverlay type={celebration} onDone={()=>setCelebration(null)}/>}
+        </div>
+      );
+    }
+
+    /* ═══════════════════════════════════════════
+       Kid Column
+       ═══════════════════════════════════════════ */
+    function KidColumn({ kid, colorIndex, onToggleChore }) {
+      const color=KID_COLORS[colorIndex%KID_COLORS.length];
+      const done=kid.chores.filter(c=>c.completed).length;
+      const allDone=done===kid.chores.length&&kid.chores.length>0;
+
+      return (
+        <div style={{flex:1,minWidth:260,maxWidth:420,background:color.bg,borderRadius:24,
+          border:`2px solid ${color.border}`,padding:20,display:"flex",flexDirection:"column",gap:12,
+          boxShadow:"0 4px 20px rgba(0,0,0,0.06)"}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",
+            padding:"4px 4px 8px",borderBottom:`2px solid ${color.border}`,marginBottom:4}}>
+            <h2 style={{fontSize:28,fontWeight:800,color:color.header,margin:0}}>{kid.name}</h2>
+            <div style={{fontSize:16,fontWeight:700,color:color.accent,background:color.light,
+              padding:"4px 12px",borderRadius:20,border:`2px solid ${color.border}`}}>{done}/{kid.chores.length}</div>
+          </div>
+          {allDone&&(
+            <div style={{background:`linear-gradient(135deg,${color.accent},${color.header})`,
+              borderRadius:16,padding:"12px 16px",textAlign:"center",animation:"pulse 2s infinite"}}>
+              <span style={{fontSize:32}}>🎉</span>
+              <p style={{fontSize:20,fontWeight:800,color:"white",margin:"4px 0 0"}}>All Done! Great Job!</p>
+            </div>
+          )}
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {kid.chores.map(c=><ChoreItem key={c.id} chore={c} color={color} onToggle={()=>onToggleChore(kid.id,c.id)}/>)}
+            {kid.chores.length===0&&<p style={{fontSize:18,color:"#A0AEC0",textAlign:"center",padding:20}}>No chores yet! Add some in settings ⚙️</p>}
+          </div>
+        </div>
+      );
+    }
+
+    /* ═══════════════════════════════════════════
+       Icon Picker
+       ═══════════════════════════════════════════ */
+    function IconPicker({ selected, onSelect }) {
+      return (
+        <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+          {AVAILABLE_ICONS.map(ic=>(
+            <button key={ic} onClick={()=>onSelect(ic)} style={{width:44,height:44,fontSize:24,
+              border:selected===ic?"3px solid #A78BFA":"2px solid #E2E8F0",borderRadius:10,
+              background:selected===ic?"#F3EAFF":"white",cursor:"pointer",
+              display:"flex",alignItems:"center",justifyContent:"center"}}>{ic}</button>
+          ))}
+        </div>
+      );
+    }
+
+    /* ═══════════════════════════════════════════
+       Admin Panel
+       ═══════════════════════════════════════════ */
+    function AdminPanel({ state, onUpdate, onClose }) {
+      const [editingKid,setEditingKid]=useState(null);
+      const [newName,setNewName]=useState("");
+      const [newIcon,setNewIcon]=useState("⭐");
+      const [showPicker,setShowPicker]=useState(null);
+      const [changingPass,setChangingPass]=useState(false);
+      const [kidNames,setKidNames]=useState({});
+
+      const updateKid=(id,u)=>onUpdate({...state,kids:state.kids.map(k=>k.id===id?{...k,...u}:k)});
+
+      const addChore=kidId=>{
+        if(!newName.trim())return;
+        const kid=state.kids.find(k=>k.id===kidId);
+        updateKid(kidId,{chores:[...kid.chores,{id:genId(),name:newName.trim(),icon:newIcon,completed:false}]});
+        setNewName("");setNewIcon("⭐");setShowPicker(null);
+      };
+      const removeChore=(kidId,choreId)=>{
+        const kid=state.kids.find(k=>k.id===kidId);
+        updateKid(kidId,{chores:kid.chores.filter(c=>c.id!==choreId)});
+      };
+
+      const btn=(c="#A78BFA")=>({fontSize:16,fontWeight:700,padding:"10px 20px",borderRadius:12,
+        border:"none",background:c,color:"white",cursor:"pointer",transition:"all 0.2s"});
+      const inp={fontSize:16,padding:"10px 14px",borderRadius:12,border:"2px solid #E2E8F0",outline:"none",flex:1,minWidth:0};
+
+      if(changingPass) return (
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,backdropFilter:"blur(4px)"}}>
+          <div style={{background:"white",borderRadius:24,padding:40,boxShadow:"0 20px 60px rgba(0,0,0,0.15)",textAlign:"center"}}>
+            <PasscodeInput title="Set New Passcode" onSubmit={code=>{onUpdate({...state,passcode:code});setChangingPass(false);return true;}}/>
+            <button onClick={()=>setChangingPass(false)} style={{...btn("#A0AEC0"),marginTop:20}}>Cancel</button>
+          </div>
+        </div>
+      );
+
+      return (
+        <div style={{position:"fixed",inset:0,background:"#F7F8FC",zIndex:900,overflowY:"auto"}}>
+          <div style={{maxWidth:700,margin:"0 auto",padding:"24px 20px 40px"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:24}}>
+              <h1 style={{fontSize:32,fontWeight:800,color:"#4A5568",margin:0}}>⚙️ Settings</h1>
+              <button onClick={onClose} style={btn("#4A9CC9")}>✕ Done</button>
+            </div>
+
+            <div style={{background:"white",borderRadius:20,padding:20,marginBottom:20,border:"2px solid #E2E8F0",boxShadow:"0 2px 10px rgba(0,0,0,0.04)"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div>
+                  <h3 style={{fontSize:20,fontWeight:700,color:"#4A5568",margin:0}}>🔒 Passcode</h3>
+                  <p style={{fontSize:14,color:"#A0AEC0",margin:"4px 0 0"}}>Current: {state.passcode.replace(/./g,"•")}</p>
+                </div>
+                <button onClick={()=>setChangingPass(true)} style={btn("#A78BFA")}>Change</button>
+              </div>
+            </div>
+
+            {state.kids.map((kid,idx)=>{
+              const color=KID_COLORS[idx%KID_COLORS.length];
+              const isEd=editingKid===kid.id;
+              return (
+                <div key={kid.id} style={{background:"white",borderRadius:20,padding:20,marginBottom:16,
+                  border:`2px solid ${isEd?color.accent:"#E2E8F0"}`,boxShadow:"0 2px 10px rgba(0,0,0,0.04)",transition:"all 0.3s"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:isEd?16:0}}>
+                    <div style={{display:"flex",alignItems:"center",gap:12,flex:1}}>
+                      <div style={{width:14,height:14,borderRadius:7,background:color.accent}}/>
+                      {isEd?(
+                        <input value={kidNames[kid.id]??kid.name}
+                          onChange={e=>setKidNames({...kidNames,[kid.id]:e.target.value})}
+                          onBlur={()=>{if(kidNames[kid.id]?.trim())updateKid(kid.id,{name:kidNames[kid.id].trim()});setKidNames({...kidNames,[kid.id]:undefined});}}
+                          style={{...inp,fontSize:20,fontWeight:700,maxWidth:200}} autoFocus/>
+                      ):(
+                        <h3 style={{fontSize:20,fontWeight:700,color:"#4A5568",margin:0}}>{kid.name}</h3>
+                      )}
+                      {kid.isGuest&&<span style={{fontSize:12,fontWeight:700,color:color.accent,background:color.bg,padding:"2px 10px",borderRadius:8}}>GUEST</span>}
+                    </div>
+                    <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                      {kid.isGuest&&(
+                        <div style={{display:"flex",alignItems:"center",gap:8}}>
+                          <span style={{fontSize:14,fontWeight:600,color:"#718096"}}>{kid.active?"On":"Off"}</span>
+                          <div onClick={()=>updateKid(kid.id,{active:!kid.active})} style={{
+                            width:52,height:30,borderRadius:15,background:kid.active?color.accent:"#CBD5E0",
+                            position:"relative",cursor:"pointer",transition:"all 0.3s"}}>
+                            <div style={{width:24,height:24,borderRadius:12,background:"white",
+                              position:"absolute",top:3,left:kid.active?25:3,transition:"all 0.3s",
+                              boxShadow:"0 1px 4px rgba(0,0,0,0.2)"}}/>
+                          </div>
+                        </div>
+                      )}
+                      <button onClick={()=>setEditingKid(isEd?null:kid.id)} style={btn(isEd?color.accent:"#718096")}>{isEd?"Close":"Edit"}</button>
+                    </div>
+                  </div>
+                  {isEd&&(
+                    <div>
+                      <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
+                        {kid.chores.map(ch=>(
+                          <div key={ch.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 12px",borderRadius:12,background:"#F7F8FC"}}>
+                            <span style={{fontSize:24}}>{ch.icon}</span>
+                            <span style={{fontSize:16,fontWeight:600,color:"#4A5568",flex:1}}>{ch.name}</span>
+                            <button onClick={()=>removeChore(kid.id,ch.id)} style={{
+                              width:32,height:32,borderRadius:8,border:"none",background:"#FED7D7",color:"#E53E3E",
+                              fontSize:16,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+                          </div>
+                        ))}
+                      </div>
+                      <div style={{padding:16,borderRadius:16,background:"#F7F8FC",border:"2px dashed #E2E8F0"}}>
+                        <p style={{fontSize:14,fontWeight:700,color:"#718096",margin:"0 0 10px"}}>Add New Chore</p>
+                        <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:10}}>
+                          <button onClick={()=>setShowPicker(showPicker==="new-"+kid.id?null:"new-"+kid.id)} style={{
+                            width:48,height:48,borderRadius:12,border:"2px solid #E2E8F0",background:"white",
+                            fontSize:24,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>{newIcon}</button>
+                          <input value={newName} onChange={e=>setNewName(e.target.value)} placeholder="Chore name..." style={inp}
+                            onKeyDown={e=>e.key==="Enter"&&addChore(kid.id)}/>
+                          <button onClick={()=>addChore(kid.id)} style={btn(color.accent)}>Add</button>
+                        </div>
+                        {showPicker==="new-"+kid.id&&<IconPicker selected={newIcon} onSelect={ic=>{setNewIcon(ic);setShowPicker(null);}}/>}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      );
+    }
+
+    /* ═══════════════════════════════════════════
+       Main App
+       ═══════════════════════════════════════════ */
+    function ChoreApp() {
+      const [state,setState]=useState(null);
+      const [loading,setLoading]=useState(true);
+      const [screen,setScreen]=useState("main");
+      const [time,setTime]=useState(new Date());
+
+      useEffect(()=>{
+        const saved=Storage.get("chore-app-state");
+        if(saved){
+          const today=new Date().toDateString();
+          if(saved.lastReset!==today){
+            saved.kids=saved.kids.map(k=>({...k,chores:k.chores.map(c=>({...c,completed:false}))}));
+            saved.lastReset=today;
+          }
+          setState(saved);
+        } else setState(getDefaultState());
+        setLoading(false);
+      },[]);
+
+      useEffect(()=>{if(state&&!loading)Storage.set("chore-app-state",state);},[state,loading]);
+      useEffect(()=>{const i=setInterval(()=>setTime(new Date()),60000);return()=>clearInterval(i);},[]);
+
+      const toggleChore=useCallback((kidId,choreId)=>{
+        setState(p=>({...p,kids:p.kids.map(k=>k.id===kidId?{...k,chores:k.chores.map(c=>c.id===choreId?{...c,completed:!c.completed}:c)}:k)}));
+      },[]);
+
+      const handlePasscode=useCallback(code=>{
+        if(code===state?.passcode){setScreen("admin");return true;}
+        return false;
+      },[state?.passcode]);
+
+      if(loading||!state) return (
+        <div style={{height:"100vh",display:"flex",alignItems:"center",justifyContent:"center",
+          background:"linear-gradient(160deg,#F0F4FF 0%,#FFF0F5 50%,#F0FFF0 100%)",
+          fontSize:28,fontWeight:700,color:"#A0AEC0"}}>Loading... ✨</div>
+      );
+
+      const activeKids=state.kids.filter(k=>k.active);
+      const hr=time.getHours();
+      const greeting=hr<12?"Good Morning":hr<17?"Good Afternoon":"Good Evening";
+
+      return (
+        <div style={{minHeight:"100vh",background:"linear-gradient(160deg,#F0F4FF 0%,#FFF0F5 50%,#F0FFF0 100%)",padding:"20px 20px 40px"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",maxWidth:1200,margin:"0 auto 24px",padding:"0 4px"}}>
+            <div>
+              <h1 style={{fontSize:36,fontWeight:900,
+                background:"linear-gradient(135deg,#4A9CC9,#A78BFA,#C94A7C)",
+                WebkitBackgroundClip:"text",WebkitTextFillColor:"transparent",margin:0,lineHeight:1.2}}>
+                ✨ Chore Champions
+              </h1>
+              <p style={{fontSize:18,fontWeight:600,color:"#A0AEC0",margin:"4px 0 0"}}>{greeting}! Let's get things done!</p>
+            </div>
+            <button onClick={()=>setScreen("passcode")} style={{
+              width:52,height:52,borderRadius:16,border:"2px solid #E2E8F0",background:"white",
+              fontSize:24,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",
+              boxShadow:"0 2px 8px rgba(0,0,0,0.06)"}}>⚙️</button>
+          </div>
+
+          <div style={{display:"flex",gap:20,justifyContent:"center",maxWidth:1200,margin:"0 auto",flexWrap:"wrap"}}>
+            {activeKids.map(kid=><KidColumn key={kid.id} kid={kid} colorIndex={state.kids.indexOf(kid)} onToggleChore={toggleChore}/>)}
+            {activeKids.length===0&&(
+              <div style={{textAlign:"center",padding:60,color:"#A0AEC0",fontSize:22,fontWeight:600}}>
+                <p style={{fontSize:48,margin:"0 0 12px"}}>👋</p>
+                <p>No kids set up yet!</p><p>Tap ⚙️ to get started.</p>
+              </div>
+            )}
+          </div>
+
+          {screen==="passcode"&&(
+            <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",
+              display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,backdropFilter:"blur(4px)"}}>
+              <div style={{background:"white",borderRadius:28,padding:"40px 48px",
+                boxShadow:"0 20px 60px rgba(0,0,0,0.15)",textAlign:"center"}}>
+                <PasscodeInput title="🔒 Enter Passcode" onSubmit={handlePasscode}/>
+                <button onClick={()=>setScreen("main")} style={{
+                  marginTop:24,fontSize:16,fontWeight:700,padding:"10px 24px",borderRadius:12,
+                  border:"none",background:"#E2E8F0",color:"#718096",cursor:"pointer"}}>Cancel</button>
+              </div>
+            </div>
+          )}
+
+          {screen==="admin"&&<AdminPanel state={state} onUpdate={setState} onClose={()=>setScreen("main")}/>}
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<ChoreApp/>);
+  </script>
+</body>
+</html>
